@@ -78,7 +78,7 @@ class GCN(nn.Module):
 
         x = F.dropout(x, self.dropout, training=self.training)
         x = self.gc2(x, edge_index,edge_weight)
-        return x
+        return F.log_softmax(x,dim=1)
 
     def initialize(self):
         """Initialize parameters of GCN.
@@ -128,7 +128,7 @@ class GCN(nn.Module):
         for i in range(train_iters):
             optimizer.zero_grad()
             output = self.forward(self.features, self.edge_index, self.edge_weight)
-            loss_train = F.cross_entropy(output[idx_train], labels[idx_train])
+            loss_train = F.nll_loss(output[idx_train], labels[idx_train])
             loss_train.backward()
             optimizer.step()
             if verbose and i % 10 == 0:
@@ -150,7 +150,7 @@ class GCN(nn.Module):
             self.train()
             optimizer.zero_grad()
             output = self.forward(self.features, self.edge_index, self.edge_weight)
-            loss_train = F.cross_entropy(output[idx_train], labels[idx_train])
+            loss_train = F.nll_loss(output[idx_train], labels[idx_train])
             loss_train.backward()
             optimizer.step()
 
@@ -158,7 +158,7 @@ class GCN(nn.Module):
 
             self.eval()
             output = self.forward(self.features, self.edge_index, self.edge_weight)
-            loss_val = F.cross_entropy(output[idx_val], labels[idx_val])
+            loss_val = F.nll_loss(output[idx_val], labels[idx_val])
             acc_val = utils.accuracy(output[idx_val], labels[idx_val])
             
             if verbose and i % 10 == 0:
@@ -183,7 +183,7 @@ class GCN(nn.Module):
         """
         self.eval()
         output = self.forward(self.features, self.edge_index,self.edge_weight)
-        loss_test = F.cross_entropy(output[idx_test], self.labels[idx_test])
+        loss_test = F.nll_loss(output[idx_test], self.labels[idx_test])
         acc_test = utils.accuracy(output[idx_test], self.labels[idx_test])
         print("Test set results:",
               "loss= {:.4f}".format(loss_test.item()),

@@ -25,7 +25,9 @@ class SynData:
         plt.show()
 
     def add_noise(self, idx, noise_rate=0.1):
+        from utils import attribute_mask
 
+        # x = attribute_mask(self.data.x[idx], noise_rate)
         x = self.data.x[idx].numpy().copy()
 
         p = np.ones([len(x)])
@@ -39,6 +41,91 @@ class SynData:
         x[noise] = 0
 
         return x
+
+    def syn_rank(self, start, neighbors, subgraphs, node_start, edge_start):
+
+        
+        data = self.data
+        
+        y = data.y[neighbors].numpy()
+        subgraphs = subgraphs[:,subgraphs[0]<subgraphs[1]].T.numpy()
+
+        #self.plot_subgraph(subgraphs, y)
+
+        node_roles = np.arange(node_start, node_start+len(neighbors))
+        edge_roles = np.arange(edge_start, edge_start+len(subgraphs))
+
+        neighbor_x = data.x[neighbors].numpy()
+        graphs = []
+
+        # add test
+        G = nx.Graph()
+        for j, idx in enumerate(neighbors):
+            new_node_idx = start + j
+            x = data.x[idx].numpy()
+            #print(np.abs(x-data.x[idx].numpy()).sum())
+            G.add_node(new_node_idx, x=x, y=int(data.y[idx]), node_role=node_roles[j],\
+                        test_mask=True, train_mask=False, val_mask=False, noise=0.0)
+            
+        for edge, role in zip(subgraphs, edge_roles):
+            G.add_edge(edge[0], edge[1], edge_role=role)
+        graphs.append(G)
+
+        train_noises = [0.2, 0.3, 0.4]
+        for i,noise_rate in enumerate(train_noises):
+            G = nx.Graph()
+            for j, idx in enumerate(neighbors):
+                new_node_idx = start + j
+                x = self.add_noise(idx, noise_rate)
+                G.add_node(new_node_idx, x=x, y=int(data.y[idx]), node_role=node_roles[j],\
+                            test_mask=False, train_mask=True, val_mask=False, noise=noise_rate)
+
+            for edge, role in zip(subgraphs, edge_roles):
+                G.add_edge(edge[0], edge[1], edge_role=role)
+
+            if noise_rate==0.4:
+                while True:
+                    u = np.random.randint(0, G.number_of_nodes())
+                    v = np.random.randint(0, G.number_of_nodes())
+                    if (not G.has_edge(u, v)) and (u != v):
+                        break
+                    G.add_edge(u, v, edge_role=0)
+            
+            if noise_rate==0.6:
+                for _ in range(2):
+                    while True:
+                        u = np.random.randint(0, G.number_of_nodes())
+                        v = np.random.randint(0, G.number_of_nodes())
+                        if (not G.has_edge(u, v)) and (u != v):
+                            break
+                        G.add_edge(u, v, edge_role=0)
+
+            graphs.append(G)
+
+        val_noises = [0.2]*3
+
+        for i,noise_rate in enumerate(val_noises):
+            G = nx.Graph()
+            for j, idx in enumerate(neighbors):
+                new_node_idx = start + j
+                x = self.add_noise(idx, noise_rate)
+
+                G.add_node(new_node_idx, x=x, y=int(data.y[idx]), node_role=node_roles[j],\
+                            test_mask=False, train_mask=False, val_mask=True, noise=noise_rate)
+
+            for edge, role in zip(subgraphs, edge_roles):
+                G.add_edge(edge[0], edge[1], edge_role=role)
+
+            while True:
+                u = np.random.randint(0, G.number_of_nodes())
+                v = np.random.randint(0, G.number_of_nodes())
+                if (not G.has_edge(u, v)) and (u != v):
+                    break
+                G.add_edge(u, v, edge_role=0)
+            graphs.append(G)
+
+        number = 1 + len(val_noises) + len(train_noises)
+        return graphs, start + number*len(neighbors), node_start + len(neighbors), edge_start + len(subgraphs)
 
     def syn_local(self, start, neighbors, subgraphs, node_start, edge_start, number=10, noise_rate=0.4):
 
@@ -113,7 +200,7 @@ class SynData:
         return G
     
 
-    def syn_graph(self, n_basis=300, basis_type='random',nb_shapes=1, nb_copy=10, hop=2, noise_rate=0.0, connect=1, seed=15):
+    def syn_graph(self, n_basis=300, basis_type='real',nb_shapes=3, hop=2, connect=1, seed=15):
         
         np.random.seed(seed)
 
@@ -134,10 +221,11 @@ class SynData:
                 overlap = set(list(neighbors.numpy())) & set(remove_nodes)
                 
                 if len(neighbors)>=5 and len(neighbors)<=20 and len(overlap)==0:
-                    #print(self.data.y[idx])
-                    #self.plot_subgraph(subgraphs.T.numpy(), self.data.y[neighbors].numpy())
-                    G, start, node_start, edge_start = self.syn_local(0, neighbors, subgraphs,\
-                                                                node_start, edge_start, nb_copy, noise_rate)
+
+                    # G, start, node_start, edge_start = self.syn_local(0, neighbors, subgraphs,\
+                    #                                             node_start, edge_start, nb_copy, noise_rate)
+                    G, start, node_start, edge_start = self.syn_rank(0, neighbors, subgraphs,\
+                                                                node_start, edge_start)
                                                             
                     n += 1
                     graphs += G
@@ -146,13 +234,24 @@ class SynData:
                     break
         start = 0
 
-        if basis_type=='random':
-            basis = self.syn_random_basis(n_basis, 2, start)
-        else:
-            basis = self.syn_real_basis(n_basis * 2, remove_nodes, start)
+        # if basis_type=='random':
+        #     basis = self.syn_random_basis(n_basis, 2, start)
+        # else:
+        basis = self.syn_real_basis(n_basis * 2, remove_nodes, start)
+        train_basis_idx = np.random.choice(basis.number_of_nodes(), size=int(0.2*basis.number_of_nodes()), replace=False)
+        
+        for i in range(basis.number_of_nodes()):
+            basis.nodes[i]['train_mask']=False
+            basis.nodes[i]['test_mask']=False
+            basis.nodes[i]['val_mask']=False
+            basis.nodes[i]['noise']=0.0
+
+            if i in train_basis_idx:
+                basis.nodes[i]['train_mask']=True
 
         start += basis.number_of_nodes()
         for motif in graphs:
+
             mapping = {nid: start + i for i, nid in enumerate(motif.nodes)}
             motif = nx.relabel_nodes(motif, mapping)
             start += motif.number_of_nodes()
@@ -165,51 +264,47 @@ class SynData:
                 basis.add_edge(i,j, edge_role=0)
 
         return basis
+
+#%%
+import pickle as pkl
+import networkx as nx
+from torch_geometric.utils import from_networkx
+def make_pred_real(node_idx, edge_mask, edge_index):
+
+    mask = (edge_mask>0) & (edge_index[0]<edge_index[1])
+    pred = edge_mask[mask].cpu().numpy()
+    real_edge = edge_index[:,mask]
+    real = np.zeros_like(pred)
+    start_idx = node_idx - node_idx % 5
+    for i in range(real_edge.shape[1]):
+        if real_edge[0,i]==start_idx:
+            if real_edge[1,i] in [start_idx+1,start_idx+3, start_idx+4]:
+                real[i]=1.0
+        if real_edge[0,i]==start_idx+1 and real_edge[1,i]==start_idx+2:
+            real[i] = 1.0
+        if real_edge[0,i]==start_idx+2 and real_edge[1,i]==start_idx+3:
+            real[i] = 1.0
+
+    return pred, real
+def BA_shape(file):
     
-    def get_train_test_split(self, G):
+    with open(file, 'rb') as fin:
+        adj, features, y_train, y_val, y_test, train_mask, val_mask, test_mask, edge_label_matrix  = pkl.load(fin)
 
-        from torch_geometric.utils import from_networkx
-        from sklearn.model_selection import train_test_split
+    y = (y_train+y_test+y_val).nonzero()[1]
 
-        syn_data = from_networkx(G)
-        np.random.seed(15)
-        motif_idx = (syn_data.node_role > 0).nonzero().flatten().numpy()
-        motif_node_role = syn_data.node_role[motif_idx].numpy()
-        train_motif_idx, test_idx = train_test_split(motif_idx, train_size=0.3, test_size=0.5, stratify=motif_node_role)
-        val_idx = list(set(list(motif_idx))-set(list(train_motif_idx))-set(list(test_idx)))
 
-        basis_idx = (syn_data.node_role == 0).nonzero().flatten().numpy()
-        train_basis_idx = np.random.choice(basis_idx, size=int(0.2*len(basis_idx)), replace=False)
+    G = nx.convert_matrix.from_numpy_array(adj)
+    features = []
+    for i in G.nodes():
+        G.nodes[i]['x']=np.asarray([nx.degree(G,i),nx.triangles(G,i)],dtype=np.float32)
+        G.nodes[i]['train_mask']=train_mask[i]
+        G.nodes[i]['val_mask']=val_mask[i]
+        G.nodes[i]['test_mask']=test_mask[i]
+        G.nodes[i]['y'] = y[i]
 
-        train_mask = torch.zeros([syn_data.num_nodes],dtype=torch.bool)
-        train_mask[train_motif_idx]=True
-        train_mask[train_basis_idx]=True
+    data = from_networkx(G)
 
-        val_mask = torch.zeros([syn_data.num_nodes],dtype=torch.bool)
-        val_mask[val_idx]=True
+    return data,edge_label_matrix
 
-        test_mask = torch.zeros([syn_data.num_nodes],dtype=torch.bool)
-        test_mask[test_idx] = True
-
-        syn_data.train_mask = train_mask
-        syn_data.val_mask = val_mask
-        syn_data.test_mask = test_mask
-
-        return syn_data
-#%%
-'''
-dataset = Planetoid(root='./data/',name='Cora')
-data = dataset.data
-generator = SynData(data)
-G = generator.syn_graph(n_basis=100,basis_type='random')
-data = generator.get_train_test_split(G)
-#%%
-features = data.x
-idx = -1
-score = features[idx] @ features.T
-_, indices = score.topk(3)
-data.node_role[indices]
-#%%
-data.node_role[idx]
 # %%
-'''
