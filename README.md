@@ -74,7 +74,14 @@ Here are some results as reference
 | Edge acc | 0.8096| 0.8104|0.7993 | 0.8543|0.8521|
 
 ## On BA-Shape
-
+You can run this code to train the model on BA-Shape dataset:
+```
+bash train_BAshape.sh
+```
+Here are some results for reference:
+|Metric| | | | |
+|---|---|---|---|---|
+| ROC AUC | 0.9728 | 0.9728 | 0.9784 | 0.9746 | 0.9759|
 ## Provided model for evaluation
 We also provided trained models in `./checkpoint` for real-world datasets for evaluation to reproduce precision@k (Figure 3). You can call:
 ```
