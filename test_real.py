@@ -195,7 +195,7 @@ plt.plot(x,100*precision_k_mlp[:k],label="MLP-K",linestyle="-",linewidth=4,marke
 plt.xlabel("k",fontsize=40)
 plt.ylabel("Precision@k (%)",fontsize=40)
 # plt.xlim(-1,26)
-plt.ylim(71.5,82.5)
+# plt.ylim(71.5,82.5)
 plt.xticks([2,4,6,8],fontsize=35)
 plt.yticks(fontsize=35)
 plt.legend(fontsize=22,ncol=2,loc="upper right")
